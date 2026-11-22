@@ -37,8 +37,8 @@ export class CelebrationModal {
     card.style.cssText = `
       background: linear-gradient(135deg, #ffffff, #fef2f2);
       border-radius: 36px;
-      padding: 40px;
-      max-width: 480px;
+      padding: 36px 32px;
+      max-width: 500px;
       width: 90%;
       text-align: center;
       box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
@@ -48,7 +48,7 @@ export class CelebrationModal {
 
     this.titleEl = document.createElement('h2');
     this.titleEl.style.cssText = `
-      font-size: 32px;
+      font-size: 30px;
       font-weight: 800;
       color: #f43f5e;
       margin: 0 0 10px 0;
@@ -56,9 +56,10 @@ export class CelebrationModal {
 
     this.subtitleEl = document.createElement('p');
     this.subtitleEl.style.cssText = `
-      font-size: 18px;
+      font-size: 16px;
       color: #64748b;
-      margin: 0 0 24px 0;
+      margin: 0 0 20px 0;
+      line-height: 1.5;
     `;
 
     this.statsBox = document.createElement('div');
@@ -66,7 +67,7 @@ export class CelebrationModal {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 12px;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     `;
 
     this.actionBtn = document.createElement('button');
@@ -74,7 +75,7 @@ export class CelebrationModal {
       background: linear-gradient(135deg, #10b981, #059669);
       color: white;
       border: none;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: bold;
       padding: 16px 36px;
       border-radius: 999px;
@@ -83,7 +84,7 @@ export class CelebrationModal {
       transition: transform 0.15s, background 0.15s;
     `;
     this.actionBtn.onmouseenter = () => {
-      this.actionBtn.style.transform = 'scale(1.05)';
+      this.actionBtn.style.transform = 'scale(1.04)';
     };
     this.actionBtn.onmouseleave = () => {
       this.actionBtn.style.transform = 'scale(1)';
@@ -106,24 +107,24 @@ export class CelebrationModal {
     this.onActionCallback = onStart;
     this.titleEl.innerHTML = '🐰 Petualangan Bun-Bun!';
     this.subtitleEl.innerText =
-      'Geser tubuhmu ke kiri dan kanan untuk mengumpulkan wortel & menghindari semak!';
+      'Geser tubuhmu ke kiri dan kanan di depan kamera untuk mengumpulkan wortel & bintang ajaib!';
 
     this.statsBox.innerHTML = `
       <div style="background:#f0fdf4; padding:12px; border-radius:18px;">
-        <div style="font-size:28px;">🥕</div>
-        <div style="font-weight:bold; color:#16a34a; font-size:14px;">Wortel</div>
+        <div style="font-size:26px;">🥕</div>
+        <div style="font-weight:bold; color:#16a34a; font-size:13px;">Wortel Manis</div>
       </div>
-      <div style="background:#fefce8; padding:12px; border-radius:18px;">
-        <div style="font-size:28px;">⭐</div>
-        <div style="font-weight:bold; color:#ca8a04; font-size:14px;">Bintang</div>
+      <div style="background:#f0f9ff; padding:12px; border-radius:18px;">
+        <div style="font-size:26px;">⭐</div>
+        <div style="font-weight:bold; color:#0284c7; font-size:13px;">Bintang Berlian</div>
       </div>
       <div style="background:#fdf2f8; padding:12px; border-radius:18px;">
-        <div style="font-size:28px;">🏃</div>
-        <div style="font-weight:bold; color:#db2777; font-size:14px;">Geser Badan</div>
+        <div style="font-size:26px;">🏃</div>
+        <div style="font-weight:bold; color:#db2777; font-size:13px;">Gerak Tubuh</div>
       </div>
     `;
 
-    this.actionBtn.innerHTML = 'Mulai Main! 🚀';
+    this.actionBtn.innerHTML = 'Mulai Main & Buka Kamera! 🚀';
     this.el.style.display = 'flex';
   }
 
@@ -134,15 +135,15 @@ export class CelebrationModal {
 
     this.statsBox.innerHTML = `
       <div style="background:#f0fdf4; padding:12px; border-radius:18px;">
-        <div style="font-size:26px;">🥕 ${stats.carrots}</div>
+        <div style="font-size:24px;">🥕 ${stats.carrots}</div>
         <div style="color:#64748b; font-size:12px;">Wortel</div>
       </div>
-      <div style="background:#fefce8; padding:12px; border-radius:18px;">
-        <div style="font-size:26px;">⭐ ${stats.stars}</div>
+      <div style="background:#f0f9ff; padding:12px; border-radius:18px;">
+        <div style="font-size:24px; color:#0284c7;">⭐ ${stats.stars}</div>
         <div style="color:#64748b; font-size:12px;">Bintang</div>
       </div>
       <div style="background:#eff6ff; padding:12px; border-radius:18px;">
-        <div style="font-size:26px;">🏆 ${stats.score}</div>
+        <div style="font-size:24px;">🏆 ${stats.score}</div>
         <div style="color:#64748b; font-size:12px;">Total Skor</div>
       </div>
     `;
@@ -155,4 +156,3 @@ export class CelebrationModal {
     this.el.style.display = 'none';
   }
 }
-

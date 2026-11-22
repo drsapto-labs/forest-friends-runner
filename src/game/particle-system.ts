@@ -91,35 +91,35 @@ export class ParticleSystem {
   }
 
   public emitCollect(x: number, y: number, isStar = false): void {
-    const count = isStar ? 16 : 8;
+    const count = isStar ? 18 : 8;
     const colors = isStar
-      ? ['#fbbf24', '#f59e0b', '#fef08a', '#ffffff']
+      ? ['#00f0ff', '#38bdf8', '#818cf8', '#c084fc', '#ffffff']
       : ['#f87171', '#fb923c', '#f472b6', '#fed7aa'];
 
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 60 + Math.random() * 140;
+      const speed = 70 + Math.random() * 160;
       this.particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 40,
-        size: 4 + Math.random() * 6,
-        color: colors[Math.floor(Math.random() * colors.length)] ?? '#fbbf24',
+        vy: Math.sin(angle) * speed - 45,
+        size: 4 + Math.random() * 7,
+        color: colors[Math.floor(Math.random() * colors.length)] ?? '#00f0ff',
         alpha: 1,
         life: 0,
-        maxLife: 0.4 + Math.random() * 0.35,
+        maxLife: 0.45 + Math.random() * 0.4,
         type: isStar ? 'STAR' : 'HEART',
       });
     }
 
     this.texts.push({
-      text: isStar ? '⭐ BINTANG!' : '+10',
+      text: isStar ? '⭐ BINTANG AJAIB!' : '+10',
       x,
       y: y - 20,
       vy: -55,
       alpha: 1,
-      color: isStar ? '#f59e0b' : '#ec4899',
+      color: isStar ? '#00f0ff' : '#ec4899',
       life: 0,
     });
   }

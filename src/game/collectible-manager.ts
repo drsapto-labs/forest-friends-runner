@@ -1,6 +1,6 @@
 /**
  * Collectible Manager — Manajemen Buah & Bintang Ajaib
- * Menghasilkan wortel manis, stroberi, dan bintang yang meluncur ke arah pemain.
+ * Menghasilkan wortel manis, stroberi, dan Bintang Berlian Kontras Tinggi.
  */
 
 import { soundEngine } from '@audio/audio-synth';
@@ -41,7 +41,7 @@ export class CollectibleManager {
     this.spawnTimer = 0;
   }
 
-  public update(dt: number, speed: number, playerLane: number, playerJumping: boolean): number {
+  public update(dt: number, speed: number, playerLane: number, _playerJumping: boolean): number {
     let scoreGained = 0;
 
     // Gerakkan item ke arah kamera (Z dari 0 ke 1)
@@ -52,7 +52,7 @@ export class CollectibleManager {
       item.bobPhase += dt * 4;
 
       // Cek tabrakan / koleksi dengan karakter pemain
-      // Hitbox pemaaf (generous) khusus balita 4 tahun: toleransi Z dan Lane yang longgar
+      // Hitbox pemaaf (generous) khusus balita 4 tahun
       if (!item.collected && Math.abs(item.z - PLAYER_Z) < 0.08) {
         const laneDist = Math.abs(item.lane - playerLane);
         if (laneDist < 0.52) {
@@ -102,14 +102,13 @@ export class CollectibleManager {
   }
 
   private spawnWave(): void {
-    // Tentukan jalur (0, 1, atau 2)
     const lane = Math.floor(Math.random() * 3) as 0 | 1 | 2;
     const rand = Math.random();
     let type: CollectibleType = 'CARROT';
 
-    if (rand < 0.2) {
+    if (rand < 0.28) {
       type = 'STAR';
-    } else if (rand < 0.5) {
+    } else if (rand < 0.55) {
       type = 'STRAWBERRY';
     }
 
@@ -140,20 +139,20 @@ export class CollectibleManager {
         ROAD_BOTTOM_WIDTH
       );
 
-      const bobY = Math.sin(item.bobPhase) * 12 * proj.scale;
+      const bobY = Math.sin(item.bobPhase) * 14 * proj.scale;
       const drawX = proj.x;
-      const drawY = proj.y - 45 * proj.scale + bobY;
+      const drawY = proj.y - 48 * proj.scale + bobY;
 
       ctx.save();
       ctx.translate(drawX, drawY);
-      ctx.scale(proj.scale * 1.25, proj.scale * 1.25);
+      ctx.scale(proj.scale * 1.35, proj.scale * 1.35);
 
       if (item.type === 'CARROT') {
         this.drawCarrot(ctx);
       } else if (item.type === 'STRAWBERRY') {
         this.drawStrawberry(ctx);
       } else {
-        this.drawStar(ctx);
+        this.drawHighContrastStar(ctx, item.bobPhase);
       }
 
       ctx.restore();
@@ -162,72 +161,113 @@ export class CollectibleManager {
 
   private drawCarrot(ctx: CanvasRenderingContext2D): void {
     // Bayangan lembut di bawah
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.beginPath();
-    ctx.ellipse(0, 24, 14, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 24, 15, 6, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Daun Wortel Hijau Segar
-    ctx.fillStyle = '#22c55e';
+    ctx.fillStyle = '#16a34a';
     ctx.beginPath();
-    ctx.ellipse(-4, -18, 5, 10, -0.3, 0, Math.PI * 2);
-    ctx.ellipse(4, -18, 5, 10, 0.3, 0, Math.PI * 2);
-    ctx.ellipse(0, -22, 4, 12, 0, 0, Math.PI * 2);
+    ctx.ellipse(-5, -18, 5, 11, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(5, -18, 5, 11, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(0, -22, 4, 13, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Badan Wortel Oranye Segar
-    ctx.fillStyle = '#f97316';
-    ctx.beginPath();
-    ctx.moveTo(-10, -12);
-    ctx.quadraticCurveTo(-8, 10, 0, 22);
-    ctx.quadraticCurveTo(8, 10, 10, -12);
-    ctx.quadraticCurveTo(0, -16, -10, -12);
-    ctx.fill();
-
-    // Garis strip wortel
-    ctx.strokeStyle = '#ea580c';
+    // Badan Wortel Oranye Menyala
+    ctx.fillStyle = '#ff7a00';
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(-5, -6);
-    ctx.lineTo(2, -6);
-    ctx.moveTo(-2, 4);
-    ctx.lineTo(4, 4);
+    ctx.moveTo(-11, -12);
+    ctx.quadraticCurveTo(-9, 10, 0, 22);
+    ctx.quadraticCurveTo(9, 10, 11, -12);
+    ctx.quadraticCurveTo(0, -16, -11, -12);
+    ctx.fill();
+    ctx.stroke();
+
+    // Garis strip wortel
+    ctx.strokeStyle = '#d9480f';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-5, -5);
+    ctx.lineTo(2, -5);
+    ctx.moveTo(-2, 5);
+    ctx.lineTo(4, 5);
     ctx.stroke();
   }
 
   private drawStrawberry(ctx: CanvasRenderingContext2D): void {
+    // Bayangan
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(0, 20, 14, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
     // Daun hijau
-    ctx.fillStyle = '#16a34a';
+    ctx.fillStyle = '#15803d';
     ctx.beginPath();
-    ctx.ellipse(0, -14, 10, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -14, 11, 5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Buah stroberi merah muda manis
-    ctx.fillStyle = '#ef4444';
+    // Buah stroberi merah merona dengan outline putih tajam
+    ctx.fillStyle = '#f43f5e';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(-12, -10);
-    ctx.quadraticCurveTo(-14, 10, 0, 18);
-    ctx.quadraticCurveTo(14, 10, 12, -10);
-    ctx.quadraticCurveTo(0, -14, -12, -10);
+    ctx.moveTo(-13, -10);
+    ctx.quadraticCurveTo(-15, 10, 0, 19);
+    ctx.quadraticCurveTo(15, 10, 13, -10);
+    ctx.quadraticCurveTo(0, -14, -13, -10);
     ctx.fill();
+    ctx.stroke();
 
-    // Bintik biji kuning berkilau
+    // Bintik biji kuning
     ctx.fillStyle = '#fef08a';
     ctx.beginPath();
     ctx.arc(-4, -4, 1.5, 0, Math.PI * 2);
     ctx.arc(4, -4, 1.5, 0, Math.PI * 2);
     ctx.arc(0, 4, 1.5, 0, Math.PI * 2);
-    ctx.arc(-3, 10, 1.5, 0, Math.PI * 2);
-    ctx.arc(3, 10, 1.5, 0, Math.PI * 2);
+    ctx.arc(-3, 11, 1.5, 0, Math.PI * 2);
+    ctx.arc(3, 11, 1.5, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  private drawStar(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = '#fbbf24';
-    ctx.shadowColor = '#f59e0b';
-    ctx.shadowBlur = 12;
+  /**
+   * Bintang Berlian Kontras Tinggi (High-Contrast Cosmic Diamond Star)
+   * Menggunakan kontras komplementer Biru/Cyan elektrik + perisai pendaran ungu
+   * sehingga SANGAT KONTRAS dan langsung terlihat jelas di atas jalan oranye.
+   */
+  private drawHighContrastStar(ctx: CanvasRenderingContext2D, phase: number): void {
+    ctx.save();
 
-    const r = 18;
+    // 1. Perisai Aura Pendaran Ungu/Indigo (Aura Glow Shield)
+    // Menghilangkan tabrakan warna antara jalan oranye dan bintang
+    const pulse = Math.sin(phase * 1.5) * 3;
+    const auraRadius = 26 + pulse;
+    const auraGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, auraRadius);
+    auraGrad.addColorStop(0, 'rgba(99, 102, 241, 0.85)'); // Indigo cerah
+    auraGrad.addColorStop(0.65, 'rgba(139, 92, 246, 0.45)'); // Ungu violet
+    auraGrad.addColorStop(1, 'rgba(168, 85, 247, 0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, auraRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Kilau Silang Berputar di Luar (Sparkling Satellite Stars)
+    ctx.save();
+    ctx.rotate(phase * 0.8);
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 4; i++) {
+      ctx.rotate(Math.PI / 2);
+      ctx.beginPath();
+      ctx.arc(auraRadius - 4, 0, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // 3. Badan Bintang Cyan Elektrik / Berlian Biru (Komplementer Oranye)
+    const r = 20;
     ctx.beginPath();
     for (let i = 0; i < 5; i++) {
       ctx.lineTo(
@@ -240,8 +280,51 @@ export class CollectibleManager {
       );
     }
     ctx.closePath();
+
+    // Gradasi Cyan Elektrik ke Biru Safir
+    const starGrad = ctx.createLinearGradient(-r, -r, r, r);
+    starGrad.addColorStop(0, '#67e8f9'); // Cyan terang
+    starGrad.addColorStop(0.5, '#00f0ff'); // Neon Aqua
+    starGrad.addColorStop(1, '#0284c7'); // Ocean Blue
+    ctx.fillStyle = starGrad;
     ctx.fill();
-    ctx.shadowBlur = 0;
+
+    // Border Putih Tebal & Bersih (Maximum Edge Contrast)
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+
+    // 4. Inti Berlian Putih Berkilau di Tengah
+    const rInner = 8;
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      ctx.lineTo(
+        rInner * Math.cos(((18 + i * 72) * Math.PI) / 180),
+        -rInner * Math.sin(((18 + i * 72) * Math.PI) / 180)
+      );
+      ctx.lineTo(
+        (rInner / 2) * Math.cos(((54 + i * 72) * Math.PI) / 180),
+        -(rInner / 2) * Math.sin(((54 + i * 72) * Math.PI) / 180)
+      );
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    // 5. Mata Bintang Lucu Ceria (Kawaii Smiling Eyes untuk Balita)
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(-4, -1, 1.8, 0, Math.PI * 2);
+    ctx.arc(4, -1, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Kilau titik putih mata
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-4.6, -1.6, 0.8, 0, Math.PI * 2);
+    ctx.arc(3.4, -1.6, 0.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   }
 }
-

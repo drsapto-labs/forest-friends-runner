@@ -66,6 +66,7 @@ function bootstrap(): void {
     z-index: 40;
     background: #1e293b;
     pointer-events: auto;
+    cursor: pointer;
   `;
 
   const pipCanvas = document.createElement('canvas');
@@ -82,15 +83,16 @@ function bootstrap(): void {
     position: absolute;
     top: 6px;
     right: 6px;
-    background: rgba(15, 23, 42, 0.7);
+    background: rgba(15, 23, 42, 0.75);
     color: white;
     border: none;
     font-size: 11px;
     font-weight: bold;
-    padding: 4px 8px;
+    padding: 5px 9px;
     border-radius: 999px;
     cursor: pointer;
     backdrop-filter: blur(4px);
+    z-index: 10;
   `;
   pipContainer.appendChild(recalBtn);
   gameWrapper.appendChild(pipContainer);
@@ -111,11 +113,11 @@ function bootstrap(): void {
     const btn = document.createElement('button');
     btn.innerHTML = label;
     btn.style.cssText = `
-      background: rgba(255, 255, 255, 0.85);
-      border: 2px solid rgba(255,255,255,0.9);
+      background: rgba(255, 255, 255, 0.88);
+      border: 2px solid rgba(255,255,255,0.95);
       border-radius: 999px;
       padding: 10px 18px;
-      font-size: 18px;
+      font-size: 17px;
       font-weight: bold;
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -133,11 +135,26 @@ function bootstrap(): void {
   const webcamTracker = new WebcamTracker(inputManager);
   webcamTracker.setPipCanvas(pipCanvas);
 
-  recalBtn.onclick = () => {
-    webcamTracker.recalibrate();
+  const startOrRecalibrateCamera = () => {
+    if (webcamTracker.currentStatus === 'IDLE' || webcamTracker.currentStatus === 'DENIED' || webcamTracker.currentStatus === 'ERROR') {
+      void webcamTracker.start();
+    } else {
+      webcamTracker.recalibrate();
+    }
+  };
+
+  recalBtn.onclick = (e) => {
+    e.stopPropagation();
+    startOrRecalibrateCamera();
+  };
+
+  pipContainer.onclick = () => {
+    startOrRecalibrateCamera();
   };
 
   const hud = new HudOverlay(gameWrapper);
+  hud.onCameraClick = startOrRecalibrateCamera;
+
   const celebrationModal = new CelebrationModal(gameWrapper);
   const engine = new GameEngine(inputManager);
 
@@ -186,9 +203,23 @@ function bootstrap(): void {
   // Tampilkan Layar Mulai
   celebrationModal.showStart(() => {
     // Jalankan tracker kamera dan mulai permainan
-    void webcamTracker.start();
+    startOrRecalibrateCamera();
     engine.startGame();
   });
+
+  // Coba mulai kamera secara proaktif jika diizinkan browser
+  if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+    navigator.permissions
+      ?.query({ name: 'camera' as PermissionName })
+      .then((permissionStatus) => {
+        if (permissionStatus.state === 'granted') {
+          void webcamTracker.start();
+        }
+      })
+      .catch(() => {
+        // Abaikan jika browser tidak mendukung permissions.query
+      });
+  }
 
   // 5. Game Loop Utama (RAF 60 FPS)
   let lastTime = performance.now();
@@ -206,4 +237,3 @@ function bootstrap(): void {
 }
 
 window.addEventListener('DOMContentLoaded', bootstrap);
-

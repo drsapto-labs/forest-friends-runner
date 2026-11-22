@@ -1,6 +1,7 @@
 /**
  * Webcam Tracker — Integrasi MediaPipe PoseLandmarker dengan PiP Visualizer Ceria
  * 100% on-device WASM, zero server upload (Privasi penuh anak).
+ * Dilengkapi GPU -> CPU fallback, DOM-attached video guard, dan auto-render mirror.
  */
 
 import { FilesetResolver, PoseLandmarker, type PoseLandmarkerResult } from '@mediapipe/tasks-vision';
@@ -21,6 +22,7 @@ export class WebcamTracker {
   private readonly inputManager: InputManager;
   private pipCanvas: HTMLCanvasElement | null = null;
   private pipCtx: CanvasRenderingContext2D | null = null;
+  private isProcessingLandmarker = false;
 
   // Callback status
   public onStatusChange?: (status: TrackerStatus, msg?: string) => void;
@@ -33,9 +35,13 @@ export class WebcamTracker {
     return this.status;
   }
 
+  public get isTracking(): boolean {
+    return this.status === 'TRACKING';
+  }
+
   public setPipCanvas(canvas: HTMLCanvasElement): void {
     this.pipCanvas = canvas;
-    this.pipCtx = canvas.getContext('2d');
+    this.pipCtx = canvas.getContext('2d', { willReadFrequently: false });
   }
 
   public recalibrate(): void {
@@ -46,6 +52,7 @@ export class WebcamTracker {
   private setStatus(status: TrackerStatus, message: string = ''): void {
     this.status = status;
     this.statusMessage = message;
+    console.log(`[WebcamTracker] ${status}: ${message}`);
     this.onStatusChange?.(status, message);
   }
 
@@ -53,7 +60,15 @@ export class WebcamTracker {
    * Mulai webcam dan inisialisasi MediaPipe
    */
   public async start(): Promise<void> {
+    if (this.status === 'LOADING' || this.status === 'TRACKING') return;
+
     this.setStatus('LOADING', 'Membuka kamera petualang...');
+
+    // 1. Cek dukungan kamera di browser
+    if (!navigator.mediaDevices) {
+      this.setStatus('DENIED', 'Browser tidak mendukung akses kamera — gunakan keyboard panah');
+      return;
+    }
 
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
@@ -64,52 +79,103 @@ export class WebcamTracker {
         },
         audio: false,
       });
-    } catch {
-      this.setStatus('DENIED', 'Kamera tidak aktif — gunakan keyboard panah ◀ ▶');
+    } catch (err) {
+      console.error('[WebcamTracker] getUserMedia gagal:', err);
+      this.setStatus('DENIED', 'Izin kamera belum diberikan — klik tombol Kamera di layar');
       return;
     }
 
+    // 2. Siapkan elemen video di DOM (Wajib di WebKit/Safari agar feed mengalir)
+    if (!this.videoEl) {
+      this.videoEl = document.createElement('video');
+      this.videoEl.setAttribute('playsinline', 'true');
+      this.videoEl.setAttribute('webkit-playsinline', 'true');
+      this.videoEl.muted = true;
+      this.videoEl.autoplay = true;
+      this.videoEl.style.cssText = `
+        position: fixed;
+        top: -9999px;
+        left: -9999px;
+        width: 320px;
+        height: 240px;
+        opacity: 0;
+        pointer-events: none;
+        z-index: -100;
+      `;
+      document.body.appendChild(this.videoEl);
+    }
+
+    this.videoEl.srcObject = this.stream;
+
+    // Pastikan video mulai berputar
+    await new Promise<void>((resolve) => {
+      if (!this.videoEl) return resolve();
+
+      const tryPlay = () => {
+        if (!this.videoEl) return resolve();
+        this.videoEl
+          .play()
+          .then(() => resolve())
+          .catch((e) => {
+            console.warn('[WebcamTracker] video.play() warning:', e);
+            resolve();
+          });
+      };
+
+      if (this.videoEl.readyState >= 2) {
+        tryPlay();
+      } else {
+        this.videoEl.onloadeddata = tryPlay;
+        this.videoEl.onloadedmetadata = tryPlay;
+        setTimeout(tryPlay, 1200); // Batas aman 1.2 detik
+      }
+    });
+
+    // Mulai render PiP video segera agar pengguna melihat cermin aktif!
+    this.startDetectionLoop();
+
+    // 3. Load MediaPipe PoseLandmarker (WASM)
     try {
-      this.setStatus('LOADING', 'Memuat kecerdasan gerak...');
+      this.setStatus('LOADING', 'Menyiapkan kecerdasan gerak...');
       const vision = await FilesetResolver.forVisionTasks(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm'
       );
 
-      this.landmarker = await PoseLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath:
-            'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
-          delegate: 'GPU',
-        },
-        runningMode: 'VIDEO',
-        numPoses: 1,
-        minPoseDetectionConfidence: 0.5,
-        minPosePresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-      });
+      // Coba GPU delegate terlebih dahulu, jika gagal otomatis fallback ke CPU
+      try {
+        this.landmarker = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numPoses: 1,
+          minPoseDetectionConfidence: 0.5,
+          minPosePresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+      } catch (gpuErr) {
+        console.warn('[WebcamTracker] GPU delegate gagal, beralih ke CPU delegate:', gpuErr);
+        this.landmarker = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+            delegate: 'CPU',
+          },
+          runningMode: 'VIDEO',
+          numPoses: 1,
+          minPoseDetectionConfidence: 0.5,
+          minPosePresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+      }
+
+      this.setStatus('CALIBRATING', 'Ayo berdiri di tengah cermin!');
     } catch (err) {
-      console.warn('Gagal memuat MediaPipe model, fallback ke keyboard:', err);
-      this.setStatus('ERROR', 'Gagal memuat sensor gerak — gunakan keyboard');
-      return;
+      console.error('[WebcamTracker] Gagal load model MediaPipe:', err);
+      this.setStatus('ERROR', 'Gagal memuat sensor gerak — tombol panah keyboard tetap aktif');
     }
-
-    // Siapkan video element di memori
-    this.videoEl = document.createElement('video');
-    this.videoEl.style.display = 'none';
-    this.videoEl.srcObject = this.stream;
-    this.videoEl.autoplay = true;
-    this.videoEl.playsInline = true;
-
-    await new Promise<void>((resolve) => {
-      if (!this.videoEl) return resolve();
-      this.videoEl.onloadedmetadata = () => {
-        void this.videoEl?.play();
-        resolve();
-      };
-    });
-
-    this.setStatus('CALIBRATING', 'Ayo berdiri di tengah cermin!');
-    this.startDetectionLoop();
   }
 
   public stop(): void {
@@ -124,55 +190,75 @@ export class WebcamTracker {
     if (this.videoEl) {
       this.videoEl.pause();
       this.videoEl.srcObject = null;
+      if (this.videoEl.parentElement) {
+        this.videoEl.parentElement.removeChild(this.videoEl);
+      }
       this.videoEl = null;
     }
+    this.poseLandmarkerClose();
     this.setStatus('IDLE');
   }
 
+  private poseLandmarkerClose(): void {
+    try {
+      this.landmarker?.close();
+    } catch {
+      // Abaikan jika sudah tertutup
+    }
+    this.landmarker = null;
+  }
+
   private startDetectionLoop(): void {
+    if (this.animFrameId !== null) return;
+
     const loop = (timestamp: number) => {
-      if (!this.videoEl || this.videoEl.readyState < 2 || !this.landmarker) {
-        this.animFrameId = requestAnimationFrame(loop);
-        return;
-      }
+      // 1. Gambar live webcam feed ke PiP Canvas terlebih dahulu (Real-Time Mirror)
+      let poseLandmarks: { x: number; y: number }[] | undefined;
+      let filterResult: ReturnType<ChildPoseFilter['process']> | undefined;
 
-      const results: PoseLandmarkerResult = this.landmarker.detectForVideo(this.videoEl, timestamp);
-      const poseLandmarks = results.landmarks[0];
+      if (this.videoEl && this.videoEl.readyState >= 2 && this.landmarker && !this.isProcessingLandmarker) {
+        try {
+          this.isProcessingLandmarker = true;
+          const results: PoseLandmarkerResult = this.landmarker.detectForVideo(this.videoEl, timestamp);
+          poseLandmarks = results.landmarks[0];
 
-      if (poseLandmarks && poseLandmarks.length > 0) {
-        const filterResult = this.filter.process(poseLandmarks, timestamp);
+          if (poseLandmarks && poseLandmarks.length > 0) {
+            filterResult = this.filter.process(poseLandmarks, timestamp);
 
-        if (!filterResult.isCalibrated) {
-          if (this.status !== 'CALIBRATING') {
-            this.setStatus('CALIBRATING', 'Tersenyum dan berdiri di tengah...');
-          }
-        } else {
-          if (this.status !== 'TRACKING') {
-            this.setStatus('TRACKING', 'Deteksi Tubuh Aktif!');
-          }
+            if (!filterResult.isCalibrated) {
+              if (this.status !== 'CALIBRATING') {
+                this.setStatus('CALIBRATING', 'Tersenyum dan berdiri di tengah...');
+              }
+            } else {
+              if (this.status !== 'TRACKING') {
+                this.setStatus('TRACKING', 'Deteksi Tubuh Aktif!');
+              }
 
-          // Emit perpindahan jalur ke game engine
-          if (filterResult.laneChangedThisFrame) {
-            if (filterResult.lane === 0) this.inputManager.emit(GameAction.LANE_LEFT);
-            else if (filterResult.lane === 1) this.inputManager.emit(GameAction.LANE_CENTER);
-            else if (filterResult.lane === 2) this.inputManager.emit(GameAction.LANE_RIGHT);
-          }
+              // Emit perpindahan jalur ke game engine
+              if (filterResult.laneChangedThisFrame) {
+                if (filterResult.lane === 0) this.inputManager.emit(GameAction.LANE_LEFT);
+                else if (filterResult.lane === 1) this.inputManager.emit(GameAction.LANE_CENTER);
+                else if (filterResult.lane === 2) this.inputManager.emit(GameAction.LANE_RIGHT);
+              }
 
-          // Emit lompat & tunduk
-          if (filterResult.isJumping) {
-            this.inputManager.emit(GameAction.JUMP);
+              // Emit lompat & tunduk
+              if (filterResult.isJumping) {
+                this.inputManager.emit(GameAction.JUMP);
+              }
+              if (filterResult.isDucking) {
+                this.inputManager.emit(GameAction.DUCK_START);
+              }
+            }
           }
-          if (filterResult.isDucking) {
-            this.inputManager.emit(GameAction.DUCK_START);
-          }
+        } catch (err) {
+          console.warn('[WebcamTracker] Error detectForVideo:', err);
+        } finally {
+          this.isProcessingLandmarker = false;
         }
-
-        // Render PiP Mirror preview
-        this.renderPipPreview(filterResult.lane, filterResult.isCalibrated, filterResult.calibrationProgress, poseLandmarks);
-      } else {
-        // Tidak ada tubuh di kamera
-        this.renderPipEmpty();
       }
+
+      // Render tampilan visual PiP
+      this.renderPip(filterResult, poseLandmarks);
 
       this.animFrameId = requestAnimationFrame(loop);
     };
@@ -181,15 +267,13 @@ export class WebcamTracker {
   }
 
   /**
-   * Render cermin PiP dengan 3 zona jalur berwarna ceria ramah anak
+   * Render cermin PiP: selalu menampilkan video asli pengguna + overlay jalur ceria
    */
-  private renderPipPreview(
-    activeLane: 0 | 1 | 2,
-    isCalibrated: boolean,
-    progress: number,
-    landmarks: { x: number; y: number }[]
+  private renderPip(
+    filterResult?: ReturnType<ChildPoseFilter['process']>,
+    landmarks?: { x: number; y: number }[]
   ): void {
-    if (!this.pipCanvas || !this.pipCtx || !this.videoEl) return;
+    if (!this.pipCanvas || !this.pipCtx) return;
     const ctx = this.pipCtx;
     const w = this.pipCanvas.width;
     const h = this.pipCanvas.height;
@@ -197,18 +281,33 @@ export class WebcamTracker {
     ctx.save();
     ctx.clearRect(0, 0, w, h);
 
-    // 1. Gambar video kamera secara mirror (dibalik horizontal agar seperti cermin)
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(this.videoEl, 0, 0, w, h);
-    ctx.restore();
+    // 1. Gambar Video Kamera Live (jika feed video sudah siap)
+    if (this.videoEl && this.videoEl.readyState >= 2) {
+      ctx.save();
+      // Efek Cermin (Horizontal Flip)
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(this.videoEl, 0, 0, w, h);
+      ctx.restore();
+    } else {
+      // Placeholder jika video belum siap
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Menyiapkan Kamera...', w / 2, h / 2);
+    }
 
-    // 2. Gambar 3 Zona Jalur Transparan Ceria
+    // 2. Gambar 3 Zona Jalur Berwarna Ceria di atas cermin
     const zoneW = w / 3;
+    const activeLane = filterResult?.isCalibrated ? filterResult.lane : 1;
+    const isCalibrated = filterResult?.isCalibrated ?? false;
+
     const zones = [
-      { lane: 0, color: 'rgba(52, 211, 153, 0.28)', activeColor: 'rgba(52, 211, 153, 0.7)', label: 'KIRI', icon: '🌿' },
-      { lane: 1, color: 'rgba(251, 191, 36, 0.24)', activeColor: 'rgba(251, 191, 36, 0.7)', label: 'TENGAH', icon: '⭐' },
-      { lane: 2, color: 'rgba(96, 165, 250, 0.28)', activeColor: 'rgba(96, 165, 250, 0.7)', label: 'KANAN', icon: '🌸' },
+      { lane: 0, color: 'rgba(52, 211, 153, 0.22)', activeColor: 'rgba(52, 211, 153, 0.65)', label: 'KIRI', icon: '🌿' },
+      { lane: 1, color: 'rgba(251, 191, 36, 0.18)', activeColor: 'rgba(251, 191, 36, 0.65)', label: 'TENGAH', icon: '⭐' },
+      { lane: 2, color: 'rgba(96, 165, 250, 0.22)', activeColor: 'rgba(96, 165, 250, 0.65)', label: 'KANAN', icon: '🌸' },
     ];
 
     zones.forEach((z, i) => {
@@ -220,8 +319,8 @@ export class WebcamTracker {
 
       // Garis pemisah zona
       if (i > 0) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(zx, 0);
         ctx.lineTo(zx, h);
@@ -230,70 +329,55 @@ export class WebcamTracker {
 
       // Label & Icon Jalur
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 12px sans-serif';
+      ctx.font = 'bold 11px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowColor = 'rgba(0,0,0,0.7)';
       ctx.shadowBlur = 4;
-      ctx.fillText(`${z.icon} ${z.label}`, zx + zoneW / 2, h - 10);
+      ctx.fillText(`${z.icon} ${z.label}`, zx + zoneW / 2, h - 8);
       ctx.shadowBlur = 0;
     });
 
-    // 3. Gambar titik-titik lembut landmark tubuh (bahu & dada)
-    const ls = landmarks[11];
-    const rs = landmarks[12];
-    if (ls && rs) {
-      // Ingat mirror: landmark.x di mirror adalah 1 - landmark.x
-      const mx = (1 - (ls.x + rs.x) * 0.5) * w;
-      const my = ((ls.y + rs.y) * 0.5) * h;
+    // 3. Gambar Titik Bahu & Dada Lembut jika terdeteksi
+    if (landmarks && landmarks.length > 12) {
+      const ls = landmarks[11];
+      const rs = landmarks[12];
+      if (ls && rs) {
+        const mx = (1 - (ls.x + rs.x) * 0.5) * w;
+        const my = ((ls.y + rs.y) * 0.5) * h;
 
-      // Lingkaran berpendar di dada anak
-      ctx.fillStyle = '#ff6b81';
-      ctx.beginPath();
-      ctx.arc(mx, my, 8, 0, Math.PI * 2);
-      ctx.fill();
+        // Lingkaran berpendar lembut di dada
+        ctx.fillStyle = '#f43f5e';
+        ctx.shadowColor = '#f43f5e';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(mx, my, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
 
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
     }
 
-    // 4. Jika sedang kalibrasi, tampilkan progress bar manis
-    if (!isCalibrated) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.fillRect(0, 0, w, h);
+    // 4. Progress Bar Kalibrasi jika sedang kalibrasi
+    if (this.status === 'CALIBRATING' && filterResult && !filterResult.isCalibrated) {
+      const progress = filterResult.calibrationProgress;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.fillRect(0, 0, w, 28);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px sans-serif';
+      ctx.font = 'bold 11px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Ayo Berdiri di Tengah!', w / 2, h / 2 - 12);
+      ctx.fillText('Ayo Berdiri di Tengah Cermin!', w / 2, 14);
 
-      // Bar
-      const barW = w * 0.7;
-      const barH = 10;
-      const barX = (w - barW) / 2;
-      const barY = h / 2 + 6;
-
+      // Progress bar kecil
       ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillRect(20, 20, w - 40, 4);
       ctx.fillStyle = '#34d399';
-      ctx.fillRect(barX, barY, barW * Math.min(1, progress), barH);
+      ctx.fillRect(20, 20, (w - 40) * Math.min(1, progress), 4);
     }
-  }
 
-  private renderPipEmpty(): void {
-    if (!this.pipCanvas || !this.pipCtx) return;
-    const ctx = this.pipCtx;
-    const w = this.pipCanvas.width;
-    const h = this.pipCanvas.height;
-
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.fillStyle = '#cbd5e1';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Mencari Si Kecil...', w / 2, h / 2);
+    ctx.restore();
   }
 }
-

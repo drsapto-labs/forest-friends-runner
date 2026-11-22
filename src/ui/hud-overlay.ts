@@ -1,6 +1,6 @@
 /**
  * HUD Overlay — Tampilan Antarmuka Ramah Anak
- * Indikator Hati/Berry, Skor Wortel, Bintang, dan Status Jalur Aktif
+ * Indikator Hati/Berry, Skor Wortel, Bintang Berlian, dan Status Sensor Kamera
  */
 
 import type { GameStats } from '@game/game-engine';
@@ -14,6 +14,8 @@ export class HudOverlay {
   private starsEl: HTMLSpanElement;
   private laneIndicatorEl: HTMLDivElement;
   private trackerBadgeEl: HTMLDivElement;
+
+  public onCameraClick?: () => void;
 
   constructor(parent: HTMLElement) {
     this.container = document.createElement('div');
@@ -48,10 +50,10 @@ export class HudOverlay {
     this.heartsContainer.style.cssText = `
       display: flex;
       gap: 8px;
-      background: rgba(255, 255, 255, 0.85);
+      background: rgba(255, 255, 255, 0.88);
       padding: 8px 16px;
       border-radius: 999px;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.12);
       backdrop-filter: blur(8px);
     `;
 
@@ -59,13 +61,13 @@ export class HudOverlay {
     const statsPill = document.createElement('div');
     statsPill.style.cssText = `
       display: flex;
-      gap: 20px;
-      background: rgba(255, 255, 255, 0.85);
+      gap: 18px;
+      background: rgba(255, 255, 255, 0.88);
       padding: 8px 24px;
       border-radius: 999px;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.12);
       backdrop-filter: blur(8px);
-      font-size: 20px;
+      font-size: 19px;
       font-weight: bold;
       color: #334155;
     `;
@@ -74,8 +76,9 @@ export class HudOverlay {
     carrotItem.innerHTML = '🥕 <span id="carrot-val">0</span>';
     this.carrotsEl = carrotItem.querySelector('#carrot-val')!;
 
+    // Bintang Berlian Cyan Kontras Tinggi
     const starItem = document.createElement('span');
-    starItem.innerHTML = '⭐ <span id="star-val">0</span>';
+    starItem.innerHTML = '⭐ <span id="star-val" style="color: #0284c7; text-shadow: 0 0 8px rgba(6,182,212,0.4);">0</span>';
     this.starsEl = starItem.querySelector('#star-val')!;
 
     const scoreItem = document.createElement('span');
@@ -99,26 +102,33 @@ export class HudOverlay {
       width: 100%;
     `;
 
-    // Sensor Status Badge
+    // Sensor Status Badge (Dapat diklik untuk menyalakan kamera)
     this.trackerBadgeEl = document.createElement('div');
     this.trackerBadgeEl.style.cssText = `
-      background: rgba(15, 23, 42, 0.75);
+      background: rgba(15, 23, 42, 0.82);
       color: #f8fafc;
-      padding: 6px 14px;
+      padding: 8px 16px;
       border-radius: 999px;
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
       backdrop-filter: blur(6px);
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
+      pointer-events: auto;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transition: transform 0.15s, background 0.15s;
     `;
-    this.trackerBadgeEl.innerHTML = '📷 Sensor: Memuat...';
+    this.trackerBadgeEl.onmouseenter = () => (this.trackerBadgeEl.style.transform = 'scale(1.04)');
+    this.trackerBadgeEl.onmouseleave = () => (this.trackerBadgeEl.style.transform = 'scale(1)');
+    this.trackerBadgeEl.onclick = () => this.onCameraClick?.();
+    this.trackerBadgeEl.innerHTML = '📷 Klik: Aktifkan Kamera';
 
     // Indikator Jalur
     this.laneIndicatorEl = document.createElement('div');
     this.laneIndicatorEl.style.cssText = `
-      background: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.92);
       padding: 8px 20px;
       border-radius: 999px;
       font-size: 16px;
@@ -165,18 +175,20 @@ export class HudOverlay {
 
   public updateTrackerStatus(status: TrackerStatus, msg?: string): void {
     if (status === 'TRACKING') {
-      this.trackerBadgeEl.innerHTML = '🟢 Sensor Tubuh: Aktif';
-      this.trackerBadgeEl.style.background = 'rgba(16, 185, 129, 0.85)';
+      this.trackerBadgeEl.innerHTML = '🟢 Sensor Gerak Tubuh Aktif';
+      this.trackerBadgeEl.style.background = 'rgba(16, 185, 129, 0.9)';
     } else if (status === 'CALIBRATING') {
-      this.trackerBadgeEl.innerHTML = `🟡 ${msg || 'Kalibrasi...'}`;
-      this.trackerBadgeEl.style.background = 'rgba(245, 158, 11, 0.85)';
+      this.trackerBadgeEl.innerHTML = `🟡 ${msg || 'Kalibrasi Posisi...'}`;
+      this.trackerBadgeEl.style.background = 'rgba(245, 158, 11, 0.9)';
+    } else if (status === 'LOADING') {
+      this.trackerBadgeEl.innerHTML = `⏳ ${msg || 'Menyiapkan Kamera...'}`;
+      this.trackerBadgeEl.style.background = 'rgba(59, 130, 246, 0.85)';
     } else if (status === 'DENIED' || status === 'ERROR') {
-      this.trackerBadgeEl.innerHTML = '⌨️ Mode Keyboard (◀ ▶)';
-      this.trackerBadgeEl.style.background = 'rgba(79, 70, 229, 0.85)';
+      this.trackerBadgeEl.innerHTML = '📷 Klik untuk Nyalakan Kamera (atau ◀ ▶)';
+      this.trackerBadgeEl.style.background = 'rgba(239, 68, 68, 0.9)';
     } else {
-      this.trackerBadgeEl.innerHTML = `📷 ${msg || 'Memuat Sensor...'}`;
-      this.trackerBadgeEl.style.background = 'rgba(15, 23, 42, 0.75)';
+      this.trackerBadgeEl.innerHTML = '📷 Klik: Aktifkan Kamera';
+      this.trackerBadgeEl.style.background = 'rgba(15, 23, 42, 0.85)';
     }
   }
 }
-
